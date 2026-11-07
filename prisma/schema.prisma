@@ -1,0 +1,331 @@
+// ==========================================
+// PersonalFinance — Gestion de finances personnelles
+// Adapté de l'architecture multi-tenant de ShopManager :
+// le périmètre d'isolation n'est plus l'entreprise (companyId)
+// mais l'utilisateur (userId).
+// ==========================================
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ==========================================
+// ENUMS & RÉFÉRENTIELS
+// ==========================================
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum TransactionType {
+  INCOME   // Revenu : crédite le compte
+  EXPENSE  // Dépense : débite le compte
+  TRANSFER // Virement interne : débite accountId, crédite toAccountId
+}
+
+enum CategoryType {
+  INCOME
+  EXPENSE
+}
+
+enum AccountType {
+  CHECKING     // Compte courant
+  SAVINGS      // Épargne
+  CASH         // Espèces
+  MOBILE_MONEY // Mobile Money
+  CARD         // Carte prépayée
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  BANK_TRANSFER
+  MOBILE_MONEY
+  CHECK
+  DIRECT_DEBIT // Prélèvement automatique
+}
+
+enum Frequency {
+  MONTHLY
+  YEARLY
+}
+
+enum BudgetPeriod {
+  MONTH
+  YEAR
+}
+
+enum DebtType {
+  DEBT // Dette due à un tiers
+  LENT // Créance : argent prêté
+}
+
+enum DebtStatus {
+  PENDING
+  PARTIAL
+  PAID
+}
+
+// ==========================================
+// UTILISATEUR (périmètre d'isolation)
+// ==========================================
+
+model User {
+  id       Int    @id @default(autoincrement())
+  publicId String @unique @default(cuid())
+
+  email    String   @unique
+  name     String
+  password String // Hash bcrypt
+  role     UserRole @default(USER)
+
+  currency String @default("XOF")
+
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts              Account[]
+  categories            Category[]
+  transactions          Transaction[]
+  budgetGoals           BudgetGoal[]
+  recurringTransactions RecurringTransaction[]
+  debts                 Debt[]
+
+  @@index([publicId])
+  @@map("users")
+}
+
+// ==========================================
+// COMPTES
+// ==========================================
+
+model Account {
+  id       Int    @id @default(autoincrement())
+  publicId String @unique @default(cuid())
+
+  userId Int
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name String // Ex. "Compte Courant", "Espèces", "Mobile Money"
+  type AccountType @default(CHECKING)
+
+  // Solde initial à l'ouverture. Le solde courant est recalculé
+  // depuis le journal des transactions (cf. lib/accounts.ts).
+  balance Decimal @default(0) @db.Decimal(14, 2)
+
+  institution String?
+  isArchived  Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions          Transaction[]          @relation("TransactionAccount")
+  incomingTransfers     Transaction[]          @relation("TransactionToAccount")
+  recurringTransactions RecurringTransaction[]
+  debtPayments          DebtPayment[]
+
+  @@unique([userId, name])
+  @@index([publicId])
+  @@map("accounts")
+}
+
+// ==========================================
+// CATÉGORIES & BUDGETS
+// ==========================================
+
+model Category {
+  id       Int    @id @default(autoincrement())
+  publicId String @unique @default(cuid())
+
+  userId Int
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name String
+  type CategoryType @default(EXPENSE)
+
+  icon  String @default("Wallet") // Nom d'icône Lucide (cf. lib/categories.ts)
+  color String @default("#64748b") // Couleur hex du badge
+
+  // Plafond mensuel de référence. NULL = catégorie non plafonnée.
+  budgetLimit Decimal? @db.Decimal(14, 2)
+
+  isArchived Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions          Transaction[]
+  budgetGoals           BudgetGoal[]
+  recurringTransactions RecurringTransaction[]
+
+  @@unique([userId, name, type])
+  @@index([publicId])
+  @@map("categories")
+}
+
+model BudgetGoal {
+  id       Int    @id @default(autoincrement())
+  publicId String @unique @default(cuid())
+
+  userId Int
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  categoryId Int
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  monthlyLimit Decimal @db.Decimal(14, 2)
+
+  // Seuil d'alerte en pourcentage du plafond (ex. 80 = alerte à 80 %).
+  alertThreshold Int          @default(80)
+  period         BudgetPeriod @default(MONTH)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, categoryId, period])
+  @@index([publicId])
+  @@map("budget_goals")
+}
+
+// ==========================================
+// TRANSACTIONS
+// ==========================================
+
+model Transaction {
+  id       Int    @id @default(autoincrement())
+  publicId String @unique @default(cuid())
+
+  userId Int
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type   TransactionType
+  amount Decimal         @db.Decimal(14, 2) // Toujours positif ; le signe découle du type
+  date   DateTime
+
+  description String?
+
+  // NULL autorisé pour les virements internes (TRANSFER), qui n'ont pas de catégorie.
+  categoryId Int?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  accountId Int
+  account   Account @relation("TransactionAccount", fields: [accountId], references: [id], onDelete: Restrict)
+
+  // Compte créditeur, uniquement pour les TRANSFER.
+  toAccountId Int?
+  toAccount   Account? @relation("TransactionToAccount", fields: [toAccountId], references: [id], onDelete: Restrict)
+
+  paymentMethod PaymentMethod @default(CASH)
+
+  // true = charge fixe / récurrente. Sert au calcul du « Reste à Vivre » :
+  // Revenus − Charges fixes (isRecurring) − Dépenses variables (!isRecurring).
+  isRecurring Boolean @default(false)
+
+  recurringTransactionId Int?
+  recurringTransaction   RecurringTransaction? @relation(fields: [recurringTransactionId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([publicId])
+  @@index([userId, date])
+  @@index([userId, categoryId, date])
+  @@index([userId, accountId, date])
+  @@map("transactions")
+}
+
+// ==========================================
+// TRANSACTIONS RÉCURRENTES (échéancier)
+// ==========================================
+
+model RecurringTransaction {
+  id       Int    @id @default(autoincrement())
+  publicId String @unique @default(cuid())
+
+  userId Int
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  label  String
+  type   TransactionType @default(EXPENSE)
+  amount Decimal         @db.Decimal(14, 2)
+
+  categoryId Int?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  accountId Int
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  frequency  Frequency @default(MONTHLY)
+  dayOfMonth Int       @default(1) // 1-31 ; borné à la fin du mois à l'exécution
+  active     Boolean   @default(true)
+
+  lastRunAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions Transaction[]
+
+  @@index([publicId])
+  @@index([userId, active])
+  @@map("recurring_transactions")
+}
+
+// ==========================================
+// DETTES & PRÊTS
+// ==========================================
+
+model Debt {
+  id       Int    @id @default(autoincrement())
+  publicId String @unique @default(cuid())
+
+  userId Int
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type       DebtType
+  personName String
+
+  totalAmount     Decimal @db.Decimal(14, 2)
+  remainingAmount Decimal @db.Decimal(14, 2)
+
+  dueDate DateTime?
+  status  DebtStatus @default(PENDING)
+  notes   String?    @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  payments DebtPayment[]
+
+  @@index([publicId])
+  @@index([userId, type, status])
+  @@map("debts")
+}
+
+model DebtPayment {
+  id       Int    @id @default(autoincrement())
+  publicId String @unique @default(cuid())
+
+  debtId Int
+  debt   Debt @relation(fields: [debtId], references: [id], onDelete: Cascade)
+
+  amount Decimal  @db.Decimal(14, 2)
+  date   DateTime
+
+  accountId Int
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+
+  @@index([publicId])
+  @@index([debtId, date])
+  @@map("debt_payments")
+}

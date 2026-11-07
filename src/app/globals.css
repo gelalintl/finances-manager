@@ -1,0 +1,101 @@
+@config "../../tailwind.config.ts";
+@import "tailwindcss";
+
+:root {
+  /* Fond clair épuré */
+  --powder: #f6f7fb;
+  --surface: #ffffff;
+  --subtle-border: #e4e7ee;
+
+  --foreground: #0f172a;
+  --foreground-muted: #65748b;
+
+  /* Marque neutre : le vert est réservé aux revenus, le rouge aux dépenses */
+  --primary-color: #4f46e5;
+  --primary: var(--primary-color, #4f46e5);
+  --primary-hover: color-mix(in srgb, var(--primary-color, #4f46e5) 84%, black);
+
+  /* Sémantique financière */
+  --income: #059669;
+  --expense: #e11d48;
+  --transfer: #0284c7;
+  --warning: #d97706;
+  --danger: #e11d48;
+}
+
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  --color-background: var(--powder);
+  --color-surface: var(--surface);
+  --color-subtle-border: var(--subtle-border);
+  --color-foreground: var(--foreground);
+  --color-foreground-muted: var(--foreground-muted);
+
+  --color-primary: var(--primary-color, #4f46e5);
+  --color-primary-hover: var(--primary-hover);
+
+  --color-income: var(--income);
+  --color-expense: var(--expense);
+  --color-transfer: var(--transfer);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+
+  --color-ring: var(--primary-color, #4f46e5);
+}
+
+html,
+body {
+  background: var(--powder);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
+
+/* Masque les flèches des inputs number : la saisie de montant reste au clavier */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+@media print {
+  @page {
+    margin: 14mm;
+  }
+
+  html,
+  body,
+  main,
+  .min-h-screen {
+    background: #fff !important;
+    color: #0f172a !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  aside,
+  header,
+  nav,
+  .no-print,
+  nextjs-portal {
+    display: none !important;
+  }
+
+  main {
+    padding: 0 !important;
+  }
+
+  .print-sheet,
+  .print-sheet * {
+    box-shadow: none !important;
+  }
+
+  .print-sheet {
+    max-width: none !important;
+  }
+}
