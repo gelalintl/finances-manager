@@ -1,3 +1,4 @@
+import { UserRole } from '@prisma/client'
 import { DashboardShell } from '@/components/layout/dashboard-shell'
 import { requireUser } from '@/lib/user-context'
 
@@ -9,7 +10,12 @@ export default async function DashboardLayout({
   const user = await requireUser()
 
   return (
-    <DashboardShell name={user.name} email={user.email}>
+    <DashboardShell
+      pseudo={user.pseudo}
+      email={user.email}
+      image={user.image}
+      isSuperAdmin={user.role === UserRole.SUPER_ADMIN}
+    >
       {children}
     </DashboardShell>
   )

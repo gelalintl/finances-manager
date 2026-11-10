@@ -9,9 +9,19 @@ export const metadata: Metadata = {
   title: 'PF | Connexion',
 }
 
-export default async function LoginPage() {
+function safeCallback(value: string | string[] | undefined) {
+  const url = Array.isArray(value) ? value[0] : value
+  return url && url.startsWith('/dashboard') ? url : '/dashboard'
+}
+
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
   const session = await auth()
   if (session?.user?.id) redirect('/dashboard')
+  const params = await searchParams
 
   return (
     <main className="flex min-h-screen items-center justify-center px-4 py-10">
@@ -28,7 +38,7 @@ export default async function LoginPage() {
           </Text>
         </div>
 
-        <LoginForm />
+        <LoginForm callbackUrl={safeCallback(params.callbackUrl)} />
       </div>
     </main>
   )

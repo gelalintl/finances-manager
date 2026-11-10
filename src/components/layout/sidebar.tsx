@@ -13,10 +13,12 @@ import {
   Tag,
   Target,
   TrendingUp,
+  UserRound,
+  Users,
   Wallet,
   type LucideIcon,
 } from 'lucide-react'
-import { dashboardNav, isActiveNav } from '@/components/layout/nav'
+import { dashboardNav, isActiveNav, visibleAccountNav, type NavItem } from '@/components/layout/nav'
 import { cn } from '@/lib/cn'
 
 const navIcons: Record<string, LucideIcon> = {
@@ -30,6 +32,8 @@ const navIcons: Record<string, LucideIcon> = {
   HandCoins,
   Target,
   Landmark,
+  UserRound,
+  Users,
 }
 
 function Brand({ collapsed = false }: { collapsed?: boolean }) {
@@ -48,39 +52,50 @@ function Brand({ collapsed = false }: { collapsed?: boolean }) {
   )
 }
 
-function NavLinks({ id, collapsed = false }: { id: string; collapsed?: boolean }) {
+function NavLink({ item, collapsed, pathname }: { item: NavItem; collapsed: boolean; pathname: string }) {
+  const Icon = navIcons[item.icon] ?? LayoutDashboard
+  const active = isActiveNav(item, pathname)
+
+  return (
+    <Link
+      href={item.href}
+      title={item.label}
+      className={cn(
+        'flex items-center gap-3 rounded-xl py-2.5 text-sm font-bold transition-all duration-200',
+        collapsed ? 'justify-center px-2' : 'px-3',
+        active ? 'bg-primary/10 text-primary' : 'text-foreground-muted hover:bg-foreground/5 hover:text-foreground',
+      )}
+      aria-current={active ? 'page' : undefined}
+    >
+      <Icon className="h-4 w-4 shrink-0" />
+      {collapsed ? <span className="sr-only">{item.label}</span> : <span className="truncate">{item.label}</span>}
+    </Link>
+  )
+}
+
+function NavLinks({ id, collapsed = false, isSuperAdmin }: { id: string; collapsed?: boolean; isSuperAdmin: boolean }) {
   const pathname = usePathname()
 
   return (
     <nav id={id} className="flex flex-1 flex-col gap-1 px-3 pb-6">
-      {dashboardNav.map((item) => {
-        const Icon = navIcons[item.icon] ?? LayoutDashboard
-        const active = isActiveNav(item, pathname)
-
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            title={item.label}
-            className={cn(
-              'flex items-center gap-3 rounded-xl py-2.5 text-sm font-bold transition-all duration-200',
-              collapsed ? 'justify-center px-2' : 'px-3',
-              active
-                ? 'bg-primary/10 text-primary'
-                : 'text-foreground-muted hover:bg-foreground/5 hover:text-foreground',
-            )}
-            aria-current={active ? 'page' : undefined}
-          >
-            <Icon className="h-4 w-4 shrink-0" />
-            {collapsed ? <span className="sr-only">{item.label}</span> : <span className="truncate">{item.label}</span>}
-          </Link>
-        )
-      })}
+      {dashboardNav.map((item) => (
+        <NavLink key={item.href} item={item} collapsed={collapsed} pathname={pathname} />
+      ))}
+      <div className="mt-4 border-t border-subtle-border pt-4">
+        {collapsed ? null : (
+          <p className="mb-1 px-3 text-[11px] font-bold tracking-wide text-foreground-muted uppercase">Compte</p>
+        )}
+        <div className="flex flex-col gap-1">
+          {visibleAccountNav(isSuperAdmin).map((item) => (
+            <NavLink key={item.href} item={item} collapsed={collapsed} pathname={pathname} />
+          ))}
+        </div>
+      </div>
     </nav>
   )
 }
 
-export function Sidebar({ collapsed }: { collapsed: boolean }) {
+export function Sidebar({ collapsed, isSuperAdmin }: { collapsed: boolean; isSuperAdmin: boolean }) {
   return (
     <aside
       className={cn(
@@ -89,7 +104,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
       )}
     >
       <Brand collapsed={collapsed} />
-      <NavLinks id="dashboard-nav" collapsed={collapsed} />
+      <NavLinks id="dashboard-nav" collapsed={collapsed} isSuperAdmin={isSuperAdmin} />
     </aside>
   )
 }

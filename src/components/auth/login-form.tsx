@@ -1,15 +1,16 @@
 'use client'
 
 import { useState, type FormEvent } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { signIn } from 'next-auth/react'
 import { Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { InputField } from '@/components/ui/input'
-import { Caption } from '@/components/ui/typography'
+import { Text } from '@/components/ui/typography'
 
-export function LoginForm() {
+export function LoginForm({ callbackUrl = '/dashboard' }: { callbackUrl?: string }) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -23,7 +24,7 @@ export function LoginForm() {
     setError(null)
 
     const result = await signIn('credentials', {
-      email: String(form.get('email') ?? ''),
+      username: String(form.get('username') ?? ''),
       password: String(form.get('password') ?? ''),
       redirect: false,
     })
@@ -31,11 +32,11 @@ export function LoginForm() {
     setLoading(false)
 
     if (!result || result.error) {
-      setError('Email ou mot de passe incorrect.')
+      setError('Identifiant ou mot de passe incorrect.')
       return
     }
 
-    router.push('/dashboard')
+    router.push(callbackUrl)
     router.refresh()
   }
 
@@ -43,13 +44,13 @@ export function LoginForm() {
     <Card className="p-6">
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <InputField
-          id="email"
-          name="email"
-          type="email"
-          label="Email"
-          placeholder="vous@exemple.com"
-          autoComplete="email"
-          defaultValue="lelouch@personalfinance.app"
+          id="username"
+          name="username"
+          type="text"
+          label="Email ou Pseudo"
+          autoComplete="username"
+          autoCapitalize="none"
+          spellCheck={false}
           required
         />
         <InputField
@@ -57,9 +58,7 @@ export function LoginForm() {
           name="password"
           type={showPassword ? 'text' : 'password'}
           label="Mot de passe"
-          placeholder="••••••••"
           autoComplete="current-password"
-          defaultValue="Admin2026!"
           required
           error={error ?? undefined}
           trailing={
@@ -78,9 +77,12 @@ export function LoginForm() {
           Se connecter
         </Button>
 
-        <Caption className="mt-1 text-center">
-          Compte administrateur pré-rempli · lelouch@personalfinance.app / Admin2026!
-        </Caption>
+        <Text variant="muted" size="sm" className="text-center">
+          Pas encore de compte ?{' '}
+          <Link href="/register" className="font-bold text-primary hover:underline">
+            Créer un compte
+          </Link>
+        </Text>
       </form>
     </Card>
   )

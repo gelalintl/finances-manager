@@ -34,6 +34,8 @@ export type CreateTransactionResult =
       /** Garde-fou : la dépense est enregistrée, mais le plafond est dépassé. */
       exceededBudget: boolean
       budget: BudgetCheck | null
+      /** Compte source effectivement utilisé (y compris un compte créé à la volée). */
+      accountPublicId: string
     }
   | { ok: false; error: string }
 
@@ -148,6 +150,7 @@ async function saveTransaction(
     }
   }
 
+  let sourcePublicId = accountPublicId
   try {
     await prisma.$transaction(async (tx) => {
       let sourceId = account?.id
@@ -159,9 +162,10 @@ async function saveTransaction(
             type: newAccountType,
             balance: 0,
           },
-          select: { id: true },
+          select: { id: true, publicId: true },
         })
         sourceId = created.id
+        sourcePublicId = created.publicId
       }
       if (!sourceId) throw new Error('missing-account')
       if (toAccountId !== null && toAccountId === sourceId) {
@@ -220,6 +224,7 @@ async function saveTransaction(
     ok: true,
     exceededBudget: budget?.exceededBudget ?? false,
     budget,
+    accountPublicId: sourcePublicId,
   }
 }
 
@@ -292,18 +297,67 @@ export type TransactionTotals = {
   net: number
 }
 
+export type TransactionTotalsByAccount = Record<string, TransactionTotals>
+
+type FlowRow = { accountId: number; type: TransactionType; _sum: { amount: Prisma.Decimal | null } }
+type TransferInRow = { toAccountId: number | null; _sum: { amount: Prisma.Decimal | null } }
+
+/**
+ * Totaux par compte : revenus et dépenses portés par le compte,
+ * solde net incluant les virements reçus et émis.
+ */
+function totalsByAccount(
+  flows: FlowRow[],
+  transfersIn: TransferInRow[],
+  publicIds: Map<number, string>,
+): TransactionTotalsByAccount {
+  const acc = new Map<number, { income: number; expense: number; transferIn: number; transferOut: number }>()
+  const slot = (id: number) => {
+    const current = acc.get(id) ?? { income: 0, expense: 0, transferIn: 0, transferOut: 0 }
+    acc.set(id, current)
+    return current
+  }
+
+  for (const row of flows) {
+    const amount = toNumber(row._sum.amount)
+    const entry = slot(row.accountId)
+    if (row.type === TransactionType.INCOME) entry.income += amount
+    else if (row.type === TransactionType.EXPENSE) entry.expense += amount
+    else entry.transferOut += amount
+  }
+  for (const row of transfersIn) {
+    if (row.toAccountId === null) continue
+    slot(row.toAccountId).transferIn += toNumber(row._sum.amount)
+  }
+
+  const result: TransactionTotalsByAccount = {}
+  for (const [id, entry] of acc) {
+    const publicId = publicIds.get(id)
+    if (!publicId) continue
+    result[publicId] = {
+      income: round2(entry.income),
+      expense: round2(entry.expense),
+      net: round2(entry.income - entry.expense + entry.transferIn - entry.transferOut),
+    }
+  }
+  return result
+}
+
 /** Liste paginée, filtrée et triée. Tout le tri est délégué à PostgreSQL. */
 export async function getTransactions(
   page: number,
   limit: number,
   filters: TransactionFilters = {},
-): Promise<Paginated<TransactionListItem> & { totals: TransactionTotals }> {
+): Promise<
+  Paginated<TransactionListItem> & { totals: TransactionTotals; totalsByAccount: TransactionTotalsByAccount }
+> {
   const empty = {
     data: [] as TransactionListItem[],
     totalCount: 0,
     totalPages: 1,
     currentPage: 1,
     totals: { income: 0, expense: 0, net: 0 },
+    totalsByAccount: {},
   }
 
   const ctx = await getUserContext()
@@ -327,12 +381,26 @@ export async function getTransactions(
               ? [{ account: { name: dir } }]
               : [{ date: dir }, { id: dir }]
 
-  const [totalCount, aggregates] = await Promise.all([
+  const [totalCount, aggregates, flows, transfersIn, userAccounts] = await Promise.all([
     prisma.transaction.count({ where }),
     prisma.transaction.groupBy({
       by: ['type'],
       where,
       _sum: { amount: true },
+    }),
+    prisma.transaction.groupBy({
+      by: ['accountId', 'type'],
+      where,
+      _sum: { amount: true },
+    }),
+    prisma.transaction.groupBy({
+      by: ['toAccountId'],
+      where: { AND: [where, { type: TransactionType.TRANSFER }] },
+      _sum: { amount: true },
+    }),
+    prisma.account.findMany({
+      where: { userId: ctx.user.id },
+      select: { id: true, publicId: true },
     }),
   ])
 
@@ -381,6 +449,11 @@ export async function getTransactions(
     totalPages: meta.totalPages,
     currentPage: meta.currentPage,
     totals: { income, expense, net: round2(income - expense) },
+    totalsByAccount: totalsByAccount(
+      flows,
+      transfersIn,
+      new Map(userAccounts.map((account) => [account.id, account.publicId])),
+    ),
   }
 }
 

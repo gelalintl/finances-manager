@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { AlertTriangle, Check } from 'lucide-react'
@@ -137,6 +137,7 @@ function TransactionModalForm({
   const [isRecurring, setIsRecurring] = useState(transaction?.isRecurring ?? false)
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+  const amountRef = useRef<HTMLInputElement>(null)
 
   const isTransfer = type === TransactionType.TRANSFER
   const creatingAccount = accountId === NEW_ACCOUNT_OPTION
@@ -272,9 +273,24 @@ function TransactionModalForm({
       toast.success(editing ? 'Transaction mise à jour.' : 'Transaction enregistrée.')
     }
 
-    reset()
-    onClose()
     router.refresh()
+
+    if (editing) {
+      reset()
+      onClose()
+      return
+    }
+
+    // Saisie continue : date, compte, type et moyen de paiement restent en place.
+    if (creatingAccount) {
+      setAccountId(result.accountPublicId)
+      setNewAccountName('')
+    }
+    setAmount('')
+    setDescription('')
+    setCategoryId('')
+    setIsRecurring(false)
+    amountRef.current?.focus()
   }
 
   return (
@@ -321,6 +337,7 @@ function TransactionModalForm({
           value={amount}
           onChange={setAmount}
           currency={currency}
+          inputRef={amountRef}
         />
 
         {/* --- Catégorie (badges couleur + icône) --- */}
@@ -353,8 +370,10 @@ function TransactionModalForm({
                 )
               })}
             </div>
-            {selectedCategory ? null : (
+            {categories.length === 0 ? (
               <Caption className="mt-1.5 block">Aucune catégorie disponible pour ce type.</Caption>
+            ) : selectedCategory ? null : (
+              <Caption className="mt-1.5 block">Choisissez une catégorie.</Caption>
             )}
           </div>
         ) : null}

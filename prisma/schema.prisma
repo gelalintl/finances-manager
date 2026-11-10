@@ -21,6 +21,7 @@ generator client {
 enum UserRole {
   USER
   ADMIN
+  SUPER_ADMIN
 }
 
 enum TransactionType {
@@ -81,9 +82,17 @@ model User {
   publicId String @unique @default(cuid())
 
   email    String   @unique
+  pseudo   String   @unique
   name     String
   password String // Hash bcrypt
   role     UserRole @default(USER)
+
+  gender      String? // "MASCULIN" | "FEMININ"
+  dateOfBirth DateTime?
+  phone       String?
+  image       String? // URL publique Supabase Storage
+
+  mustChangePassword Boolean @default(false)
 
   currency String @default("XOF")
 

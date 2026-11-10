@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type Ref } from 'react'
 import { InputField } from '@/components/ui/input'
 import { parseAmount } from '@/lib/money'
 
@@ -14,6 +14,7 @@ type AmountInputProps = {
   autoFocus?: boolean
   hint?: string
   placeholder?: string
+  inputRef?: Ref<HTMLInputElement>
 }
 
 function formatDraft(value: string) {
@@ -35,11 +36,13 @@ export function AmountInput({
   autoFocus = true,
   hint,
   placeholder = '0',
+  inputRef,
 }: AmountInputProps) {
   const [focused, setFocused] = useState(false)
 
   return (
     <InputField
+      ref={inputRef}
       name={name}
       label={label}
       inputMode="decimal"

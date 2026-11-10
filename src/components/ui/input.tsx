@@ -1,4 +1,4 @@
-import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react'
+import type { InputHTMLAttributes, ReactNode, Ref, SelectHTMLAttributes } from 'react'
 import { cn } from '@/lib/cn'
 import { Caption } from '@/components/ui/typography'
 
@@ -8,6 +8,7 @@ export const controlClass =
 export const labelClass = 'mb-1.5 block font-sans text-xs font-bold tracking-wide text-foreground-muted uppercase'
 
 type InputFieldProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> & {
+  ref?: Ref<HTMLInputElement>
   label: string
   error?: string
   trailing?: ReactNode

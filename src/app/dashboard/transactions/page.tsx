@@ -49,6 +49,7 @@ export default async function TransactionsPage({
         currentPage={result.currentPage}
         limit={limit}
         totals={result.totals}
+        totalsByAccount={result.totalsByAccount}
         filters={filters}
         options={options}
         currency={user.currency}

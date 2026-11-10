@@ -15,7 +15,11 @@ import {
   type FilterState,
 } from '@/components/transactions/transaction-filters'
 import { deleteTransaction } from '@/app/dashboard/transactions/actions'
-import type { TransactionFormOptions, TransactionTotals } from '@/app/dashboard/transactions/actions'
+import type {
+  TransactionFormOptions,
+  TransactionTotals,
+  TransactionTotalsByAccount,
+} from '@/app/dashboard/transactions/actions'
 import { formatDate } from '@/lib/dates'
 import { formatMoney } from '@/lib/money'
 import { toastResult } from '@/lib/notify'
@@ -34,6 +38,7 @@ type TransactionWorkspaceProps = {
   currentPage: number
   limit: number
   totals: TransactionTotals
+  totalsByAccount: TransactionTotalsByAccount
   filters: FilterState
   options: TransactionFormOptions
   currency: string
@@ -47,10 +52,17 @@ export function TransactionWorkspace({
   currentPage,
   limit,
   totals,
+  totalsByAccount,
   filters,
   options,
   currency,
 }: TransactionWorkspaceProps) {
+  const [balanceAccountId, setBalanceAccountId] = useState('')
+  const balanceAccount = options.accounts.find((account) => account.publicId === balanceAccountId) ?? null
+  const shownTotals: TransactionTotals = balanceAccount
+    ? (totalsByAccount[balanceAccount.publicId] ?? { income: 0, expense: 0, net: 0 })
+    : totals
+  const scopeLabel = balanceAccount ? balanceAccount.name : null
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -254,24 +266,48 @@ export function TransactionWorkspace({
             Revenus filtrés
           </Caption>
           <Text size="lg" weight="bold" className="mt-1 truncate text-income">
-            + {formatMoney(totals.income, currency)}
+            + {formatMoney(shownTotals.income, currency)}
           </Text>
+          {scopeLabel ? <Caption className="mt-0.5 block truncate">{scopeLabel}</Caption> : null}
         </Card>
         <Card className="p-4">
           <Caption weight="bold" className="tracking-wide uppercase">
             Dépenses filtrées
           </Caption>
           <Text size="lg" weight="bold" className="mt-1 truncate text-expense">
-            &minus; {formatMoney(totals.expense, currency)}
+            &minus; {formatMoney(shownTotals.expense, currency)}
           </Text>
+          {scopeLabel ? <Caption className="mt-0.5 block truncate">{scopeLabel}</Caption> : null}
         </Card>
         <Card className="p-4">
-          <Caption weight="bold" className="tracking-wide uppercase">
-            Solde net
-          </Caption>
-          <Text size="lg" weight="bold" className={cn('mt-1 truncate', totals.net < 0 ? 'text-expense' : 'text-income')}>
-            {formatMoney(totals.net, currency)}
+          <div className="flex items-center justify-between gap-2">
+            <Caption weight="bold" className="tracking-wide uppercase">
+              Solde net
+            </Caption>
+            <select
+              aria-label="Compte du solde net"
+              value={balanceAccountId}
+              onChange={(event) => setBalanceAccountId(event.target.value)}
+              className="max-w-[9.5rem] cursor-pointer truncate rounded-lg border border-subtle-border bg-surface px-2 py-1 text-xs font-medium text-foreground-muted transition-colors hover:border-primary focus:border-primary focus:ring-2 focus:ring-primary/30 focus:outline-none"
+            >
+              <option value="">Tous les comptes</option>
+              {options.accounts.map((account) => (
+                <option key={account.publicId} value={account.publicId}>
+                  {account.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <Text
+            size="lg"
+            weight="bold"
+            className={cn('mt-1 truncate', shownTotals.net < 0 ? 'text-expense' : 'text-income')}
+          >
+            {formatMoney(shownTotals.net, currency)}
           </Text>
+          {scopeLabel ? (
+            <Caption className="mt-0.5 block truncate">Virements reçus et émis inclus</Caption>
+          ) : null}
         </Card>
       </section>
 
@@ -318,6 +354,16 @@ export function TransactionWorkspace({
           )
         }}
       />
+
+      <button
+        type="button"
+        onClick={() => patch({ modal: 'transaction', edit: null })}
+        aria-label="Nouvelle transaction"
+        title="Nouvelle transaction"
+        className="fixed right-6 bottom-24 z-50 inline-flex h-14 w-14 items-center justify-center rounded-full bg-primary text-white shadow-lg shadow-primary/30 transition-transform duration-200 hover:scale-105 focus-visible:ring-4 focus-visible:ring-primary/30 focus-visible:outline-none active:scale-95 lg:right-8 lg:bottom-8"
+      >
+        <Plus className="h-6 w-6" />
+      </button>
     </div>
   )
 }

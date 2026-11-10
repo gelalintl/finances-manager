@@ -4,6 +4,7 @@ export type NavItem = {
   /** Nom d'icône Lucide résolu dans la sidebar. */
   icon: string
   exact?: boolean
+  superAdminOnly?: boolean
 }
 
 export const dashboardNav: NavItem[] = [
@@ -17,11 +18,20 @@ export const dashboardNav: NavItem[] = [
   { href: '/dashboard/debts', label: 'Dettes & Prêts', icon: 'HandCoins' },
 ]
 
+export const accountNav: NavItem[] = [
+  { href: '/dashboard/profile', label: 'Mon profil', icon: 'UserRound' },
+  { href: '/dashboard/users', label: 'Utilisateurs', icon: 'Users', superAdminOnly: true },
+]
+
+export function visibleAccountNav(isSuperAdmin: boolean) {
+  return accountNav.filter((item) => !item.superAdminOnly || isSuperAdmin)
+}
+
 export function isActiveNav(item: NavItem, pathname: string) {
   return item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`)
 }
 
 export function getSectionTitle(pathname: string) {
-  const match = dashboardNav.find((item) => isActiveNav(item, pathname))
+  const match = [...dashboardNav, ...accountNav].find((item) => isActiveNav(item, pathname))
   return match?.label ?? 'Tableau de bord'
 }

@@ -7,12 +7,14 @@ import { BottomNav, Sidebar } from '@/components/layout/sidebar'
 const COLLAPSED_KEY = 'pf-sidebar-collapsed'
 
 type DashboardShellProps = {
-  name: string
+  pseudo: string
   email: string
+  image: string | null
+  isSuperAdmin: boolean
   children: React.ReactNode
 }
 
-export function DashboardShell({ name, email, children }: DashboardShellProps) {
+export function DashboardShell({ pseudo, email, image, isSuperAdmin, children }: DashboardShellProps) {
   const [collapsed, setCollapsed] = useState(false)
 
   useEffect(() => {
@@ -29,9 +31,16 @@ export function DashboardShell({ name, email, children }: DashboardShellProps) {
 
   return (
     <div className="flex min-h-screen bg-background">
-      <Sidebar collapsed={collapsed} />
+      <Sidebar collapsed={collapsed} isSuperAdmin={isSuperAdmin} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <Header name={name} email={email} navExpanded={!collapsed} onToggleNav={toggleNav} />
+        <Header
+          pseudo={pseudo}
+          email={email}
+          image={image}
+          isSuperAdmin={isSuperAdmin}
+          navExpanded={!collapsed}
+          onToggleNav={toggleNav}
+        />
         <main className="flex-1 px-4 py-6 pb-24 sm:px-6 lg:pb-6">{children}</main>
       </div>
       <BottomNav />
