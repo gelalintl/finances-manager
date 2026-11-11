@@ -3,6 +3,7 @@ import { AvatarUpload } from '@/components/profile/avatar-upload'
 import { PasswordForm } from '@/components/profile/password-form'
 import { ProfileInfoForm } from '@/components/profile/profile-info-form'
 import { Caption, Heading } from '@/components/ui/typography'
+import { avatarSrc } from '@/lib/avatar'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/user-context'
 import { toDateInput } from '@/lib/dates'
@@ -28,7 +29,11 @@ export default async function ProfilePage() {
       </header>
 
       <div className="grid gap-4 lg:grid-cols-[18rem_1fr]">
-        <AvatarUpload pseudo={profile.pseudo} email={profile.email} image={profile.image} />
+        <AvatarUpload
+          pseudo={profile.pseudo}
+          email={profile.email}
+          image={avatarSrc(profile.image, user.publicId)}
+        />
         <div className="flex flex-col gap-4">
           <ProfileInfoForm
             initial={{

@@ -2,6 +2,7 @@ import NextAuth from 'next-auth'
 import Credentials from 'next-auth/providers/credentials'
 import { UserRole } from '@prisma/client'
 import * as bcrypt from 'bcryptjs'
+import { avatarSrc } from '@/lib/avatar'
 import { prisma } from '@/lib/prisma'
 
 export const { handlers, signIn, signOut, auth, unstable_update } = NextAuth({
@@ -89,7 +90,8 @@ export const { handlers, signIn, signOut, auth, unstable_update } = NextAuth({
         if (token.role) session.user.role = token.role as UserRole
         if (typeof token.currency === 'string') session.user.currency = token.currency
         if (typeof token.pseudo === 'string') session.user.pseudo = token.pseudo
-        session.user.image = typeof token.picture === 'string' ? token.picture : null
+        session.user.image =
+          typeof token.picture === 'string' && token.sub ? avatarSrc(token.picture, token.sub) : null
         session.user.mustChangePassword = token.mustChangePassword === true
       }
       return session

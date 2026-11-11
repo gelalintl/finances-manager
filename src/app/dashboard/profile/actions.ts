@@ -4,6 +4,14 @@ import { revalidatePath } from 'next/cache'
 import { Prisma } from '@prisma/client'
 import * as bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
+import { avatarSrc, toStoredAvatar } from '@/lib/avatar'
+import {
+  deleteObject,
+  storageConfig,
+  storedObjectOf,
+  uploadObject,
+  type StorageConfig,
+} from '@/lib/supabase-storage'
 import { getUserContext } from '@/lib/user-context'
 import {
   changePasswordSchema,
@@ -109,24 +117,18 @@ export async function changePassword(formData: FormData): Promise<FormResult> {
   return { ok: true }
 }
 
-function storageConfig() {
-  const url = (process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/\/+$/, '')
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
-  const bucket = process.env.SUPABASE_STORAGE_BUCKET ?? 'avatars'
-  if (!url || !key) return null
-  return { url, key, bucket }
-}
-
-/** Chemin de l'objet si l'URL pointe vers le bucket public configuré. */
-function objectPathFromUrl(imageUrl: string | null, base: string, bucket: string) {
-  if (!imageUrl) return null
-  const prefix = `${base}/storage/v1/object/public/${bucket}/`
-  return imageUrl.startsWith(prefix) ? imageUrl.slice(prefix.length) : null
+/** Supprime l'ancien objet seulement s'il appartient au dossier de l'utilisateur de session. */
+async function deletePreviousAvatar(config: StorageConfig, image: string | null, publicId: string) {
+  const previous = storedObjectOf(image, config)
+  if (previous && previous.path.startsWith(`${publicId}/`)) {
+    await deleteObject(config, previous.bucket, previous.path)
+  }
 }
 
 /**
- * Envoie la photo de profil dans Supabase Storage puis enregistre son URL publique.
- * Le chemin est dérivé de l'utilisateur de session : impossible d'écrire chez un autre.
+ * Envoie la photo de profil dans le bucket Supabase Storage (`avatars` par défaut, public ou privé)
+ * sous `<publicId>/<horodatage>.<ext>`. Le chemin est dérivé de l'utilisateur de session :
+ * impossible d'écrire chez un autre.
  */
 export async function uploadToSupabase(
   formData: FormData,
@@ -149,54 +151,30 @@ export async function uploadToSupabase(
   if (file.size > MAX_IMAGE_BYTES) return { ok: false, error: "L'image ne doit pas dépasser 2 Mo." }
 
   const objectPath = `${ctx.user.publicId}/${Date.now()}.${extension}`
-  const response = await fetch(`${config.url}/storage/v1/object/${config.bucket}/${objectPath}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${config.key}`,
-      apikey: config.key,
-      'Content-Type': file.type,
-      'Cache-Control': '3600',
-      'x-upsert': 'true',
-    },
-    body: Buffer.from(await file.arrayBuffer()),
-  })
+  const response = await uploadObject(config, objectPath, file)
   if (!response.ok) {
     console.error('Erreur upload Supabase:', response.status, await response.text().catch(() => ''))
     return { ok: false, error: "L'envoi de l'image a échoué." }
   }
 
-  const publicUrl = `${config.url}/storage/v1/object/public/${config.bucket}/${objectPath}`
-  const previous = objectPathFromUrl(ctx.user.image, config.url, config.bucket)
-
-  await prisma.user.update({ where: { id: ctx.user.id }, data: { image: publicUrl } })
-
-  if (previous && previous.startsWith(`${ctx.user.publicId}/`)) {
-    await fetch(`${config.url}/storage/v1/object/${config.bucket}/${previous}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${config.key}`, apikey: config.key },
-    }).catch(() => undefined)
-  }
+  const image = toStoredAvatar(config.bucket, objectPath)
+  await prisma.user.update({ where: { id: ctx.user.id }, data: { image } })
+  await deletePreviousAvatar(config, ctx.user.image, ctx.user.publicId)
 
   revalidateProfile()
-  return { ok: true, url: publicUrl }
+  return { ok: true, url: avatarSrc(image, ctx.user.publicId) ?? '' }
 }
 
 export async function removeProfileImage(): Promise<FormResult> {
   const ctx = await getUserContext()
   if (!ctx.ok) return { ok: false, error: ctx.error }
 
-  const config = storageConfig()
-  const previous = config ? objectPathFromUrl(ctx.user.image, config.url, config.bucket) : null
-
   await prisma.user.update({ where: { id: ctx.user.id }, data: { image: null } })
 
-  if (config && previous && previous.startsWith(`${ctx.user.publicId}/`)) {
-    await fetch(`${config.url}/storage/v1/object/${config.bucket}/${previous}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${config.key}`, apikey: config.key },
-    }).catch(() => undefined)
-  }
+  const config = storageConfig()
+  if (config) await deletePreviousAvatar(config, ctx.user.image, ctx.user.publicId)
 
   revalidateProfile()
   return { ok: true }
 }
+
